@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: tmdb-backend
+    env: python
+    buildCommand: ""
+    startCommand: gunicorn app:app
+    envVars:
+      - key: TMDB_KEY
+        value: eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwMDVhZGRiNDJhMDg1YThmODkxYTU1ZDI4MjIzMTYyZCIsIm5iZiI6MTY3OTQyNTg5NC40MjksInN1YiI6IjY0MWEwMTY2MGI3NGU5MDA4MTQxZWQ0OCIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.XFBnBQmxa6FIn5N8CgVaLwXImdlGpXR2vBhf4ROCOFs
