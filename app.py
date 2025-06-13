@@ -15,3 +15,7 @@ def popular():
 @app.route("/")
 def home():
     return "TMDB backend working!"
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}
