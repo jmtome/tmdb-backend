@@ -1,5 +1,8 @@
 from flask import Flask, jsonify
 import requests, os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 TMDB_KEY = os.environ.get("TMDB_KEY")
@@ -19,3 +22,6 @@ def home():
 @app.route("/health")
 def health():
     return {"status": "ok"}
+
+if __name__ == '__main__':
+    app.run(debug=True)
