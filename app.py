@@ -90,10 +90,31 @@ def search_tv():
 
 @app.route("/movie/<int:movie_id>")
 def movie_detail(movie_id):
-    url = f"https://api.themoviedb.org/3/movie/{movie_id}"
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
-    res = requests.get(url, headers=headers)
-    return jsonify(res.json())
+
+    # Get movie details
+    detail_res = requests.get(
+        f"https://api.themoviedb.org/3/movie/{movie_id}",
+        headers=headers
+    )
+    if detail_res.status_code != 200:
+        return {"error": "Failed to fetch movie details"}, 500
+    details = detail_res.json()
+
+    # Get movie images
+    images_res = requests.get(
+        f"https://api.themoviedb.org/3/movie/{movie_id}/images",
+        headers=headers
+    )
+    if images_res.status_code == 200:
+        images = images_res.json().get("backdrops", [])
+        details["backdrops"] = [
+            f"https://image.tmdb.org/t/p/w780{img['file_path']}" for img in images
+        ]
+    else:
+        details["backdrops"] = []
+
+    return jsonify(details)
 
 
 @app.route("/")
