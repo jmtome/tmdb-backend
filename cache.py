@@ -1,47 +1,51 @@
 import sqlite3
 import json
-import time
 import os
 
-CACHE_DB_PATH = os.path.join(os.path.dirname(__file__), "cache.db")
-CACHE_EXPIRATION_SECONDS = 60 * 60  # 1 hour
-
-def get_db():
-    return sqlite3.connect(CACHE_DB_PATH)
+DB_FILE = os.path.join(os.path.dirname(__file__), "cache.db")
 
 def init_db():
-    with get_db() as conn:
-        conn.execute('''
+    conn = sqlite3.connect(DB_FILE)
+    with conn:
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS search_cache (
                 query TEXT NOT NULL,
                 media_type TEXT NOT NULL,
                 result_json TEXT NOT NULL,
                 cached_at INTEGER NOT NULL,
-                UNIQUE(query, media_type)
+                PRIMARY KEY (query, media_type)
             )
-        ''')
+        """)
+    conn.close()
 
 def get_cached_result(query, media_type):
-    key = query.lower().strip()
-    with get_db() as conn:
-        row = conn.execute('''
-            SELECT result_json, cached_at FROM search_cache
-            WHERE query = ? AND media_type = ?
-        ''', (key, media_type)).fetchone()
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT result_json FROM search_cache WHERE query = ? AND media_type = ?",
+        (query, media_type),
+    )
+    row = cur.fetchone()
+    conn.close()
 
-        if row:
-            result_json, cached_at = row
-            if time.time() - cached_at < CACHE_EXPIRATION_SECONDS:
-                return json.loads(result_json)
-    return None
+    if row:
+        print(f"[CACHE] HIT: '{query}' ({media_type})", flush=True)
+        return json.loads(row[0])
+    else:
+        print(f"[CACHE] MISS: '{query}' ({media_type})", flush=True)
+        return None
 
 def save_cached_result(query, media_type, data):
-    key = query.lower().strip()
-    with get_db() as conn:
-        conn.execute('''
+    conn = sqlite3.connect(DB_FILE)
+    with conn:
+        conn.execute(
+            """
             INSERT INTO search_cache (query, media_type, result_json, cached_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(query, media_type)
-            DO UPDATE SET result_json=excluded.result_json,
-                          cached_at=excluded.cached_at
-        ''', (key, media_type, json.dumps(data), int(time.time())))
+            VALUES (?, ?, ?, strftime('%s','now'))
+            ON CONFLICT(query, media_type) DO UPDATE SET
+              result_json=excluded.result_json,
+              cached_at=strftime('%s','now')
+            """,
+            (query, media_type, json.dumps(data)),
+        )
+    conn.close()
