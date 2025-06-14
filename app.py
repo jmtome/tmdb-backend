@@ -101,20 +101,70 @@ def movie_detail(movie_id):
         return {"error": "Failed to fetch movie details"}, 500
     details = detail_res.json()
 
-    # Get movie images
+    # Get images
     images_res = requests.get(
         f"https://api.themoviedb.org/3/movie/{movie_id}/images",
         headers=headers
     )
     if images_res.status_code == 200:
         images = images_res.json().get("backdrops", [])
-        details["backdrops"] = [
-            f"https://image.tmdb.org/t/p/w780{img['file_path']}" for img in images
+        backdrops = [
+            f"https://image.tmdb.org/t/p/original{img['file_path']}" for img in images[:10]
         ]
     else:
-        details["backdrops"] = []
+        backdrops = []
 
-    return jsonify(details)
+    # Get credits
+    credits_res = requests.get(
+        f"https://api.themoviedb.org/3/movie/{movie_id}/credits",
+        headers=headers
+    )
+    if credits_res.status_code == 200:
+        credits = credits_res.json()
+        cast = credits.get("cast", [])[:10]
+        crew = credits.get("crew", [])
+        director = next((p for p in crew if p.get("job") == "Director"), None)
+    else:
+        cast = []
+        director = None
+
+    return jsonify({
+        "id": details.get("id"),
+        "title": details.get("title"),
+        "overview": details.get("overview"),
+        "poster_path": details.get("poster_path"),
+        "release_date": details.get("release_date"),
+        "vote_average": details.get("vote_average"),
+        "vote_count": details.get("vote_count"),
+        "genres": details.get("genres", []),
+        "backdrops": backdrops,
+        "cast": cast,
+        "director": director,
+    })
+
+
+@app.route("/movie/<int:movie_id>/images")
+def movie_images(movie_id):
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}/images"
+    headers = {"Authorization": f"Bearer {TMDB_KEY}"}
+
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        return {"error": "Failed to fetch images"}, res.status_code
+
+    data = res.json()
+    backdrops = data.get("backdrops", [])
+
+    simplified = [
+        {
+            "file_path": img["file_path"],
+            "width": img["width"],
+            "height": img["height"]
+        }
+        for img in backdrops
+    ]
+
+    return jsonify(simplified)
 
 
 @app.route("/")
@@ -126,29 +176,6 @@ def home():
 def health():
     return {"status": "ok"}
 
-@app.route("/movie/<int:movie_id>/images")
-def movie_images(movie_id):
-    url = f"https://api.themoviedb.org/3/movie/{movie_id}/images"
-    headers = {"Authorization": f"Bearer {TMDB_KEY}"}
-    
-    res = requests.get(url, headers=headers)
-    if res.status_code != 200:
-        return {"error": "Failed to fetch images"}, res.status_code
-
-    data = res.json()
-    backdrops = data.get("backdrops", [])
-    
-    # Return only path and maybe size-related metadata to reduce payload
-    simplified = [
-        {
-            "file_path": img["file_path"],
-            "width": img["width"],
-            "height": img["height"]
-        }
-        for img in backdrops
-    ]
-    
-    return jsonify(simplified)
 
 if __name__ == '__main__':
     app.run(debug=True)
