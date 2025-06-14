@@ -20,6 +20,31 @@ def popular():
     )
     return jsonify(res.json())
 
+@app.route("/trending")
+def trending():
+    res = requests.get(
+        "https://api.themoviedb.org/3/trending/movie/day",
+        headers={"Authorization": f"Bearer {TMDB_KEY}"}
+    )
+    return jsonify(res.json())
+
+@app.route("/now_playing")
+def now_playing():
+    res = requests.get(
+        "https://api.themoviedb.org/3/movie/now_playing",
+        headers={"Authorization": f"Bearer {TMDB_KEY}"}
+    )
+    return jsonify(res.json())
+
+@app.route("/upcoming")
+def upcoming():
+    res = requests.get(
+        "https://api.themoviedb.org/3/movie/upcoming",
+        headers={"Authorization": f"Bearer {TMDB_KEY}"}
+    )
+    return jsonify(res.json())
+
+
 @app.route("/search/movie")
 def search_movie():
     query = request.args.get("q")
