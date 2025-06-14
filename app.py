@@ -1,3 +1,4 @@
+from flask_cors import CORS
 from flask import Flask, jsonify, request
 import requests, os
 from dotenv import load_dotenv
@@ -6,6 +7,7 @@ from cache import get_cached_result, save_cached_result, init_db
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 TMDB_KEY = os.environ.get("TMDB_KEY")
 
 init_db()
