@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, os
 from dotenv import load_dotenv
-from cache import get_cached_result, save_cached_result, get_cached_data, save_cached_data, init_db
+from cache import get_cached_result, save_cached_result, get_cached_data, save_cached_data, get_with_stale_while_revalidate, init_db
 
 load_dotenv()
 
@@ -11,41 +11,108 @@ CORS(app)
 TMDB_KEY = os.environ.get("TMDB_KEY")
 init_db()
 
+# TTL configuration for different endpoints (in seconds)
+TTL_CONFIG = {
+    "popular": 1800,        # 30 minutes
+    "now_playing": 3600,    # 1 hour
+    "upcoming": 21600,      # 6 hours
+    "trending": 600,        # 10 minutes
+}
 
-@app.route("/popular")
-def popular():
+def fetch_popular_movies():
+    """Fetch popular movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/movie/popular",
         headers={"Authorization": f"Bearer {TMDB_KEY}"}
     )
-    return jsonify(res.json())
+    if res.status_code == 200:
+        return res.json()
+    return None
 
-
-@app.route("/now_playing")
-def now_playing():
+def fetch_now_playing_movies():
+    """Fetch now playing movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/movie/now_playing",
         headers={"Authorization": f"Bearer {TMDB_KEY}"}
     )
-    return jsonify(res.json())
+    if res.status_code == 200:
+        return res.json()
+    return None
 
-
-@app.route("/upcoming")
-def upcoming():
+def fetch_upcoming_movies():
+    """Fetch upcoming movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/movie/upcoming",
         headers={"Authorization": f"Bearer {TMDB_KEY}"}
     )
-    return jsonify(res.json())
+    if res.status_code == 200:
+        return res.json()
+    return None
 
-
-@app.route("/trending")
-def trending():
+def fetch_trending_movies():
+    """Fetch trending movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/trending/movie/week",
         headers={"Authorization": f"Bearer {TMDB_KEY}"}
     )
-    return jsonify(res.json())
+    if res.status_code == 200:
+        return res.json()
+    return None
+
+@app.route("/popular")
+def popular():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="popular",
+        ttl_seconds=TTL_CONFIG["popular"],
+        fetch_function=fetch_popular_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch popular movies"}, 500
+
+
+@app.route("/now_playing")
+def now_playing():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="now_playing",
+        ttl_seconds=TTL_CONFIG["now_playing"],
+        fetch_function=fetch_now_playing_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch now playing movies"}, 500
+
+
+@app.route("/upcoming")
+def upcoming():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="upcoming",
+        ttl_seconds=TTL_CONFIG["upcoming"],
+        fetch_function=fetch_upcoming_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch upcoming movies"}, 500
+
+
+@app.route("/trending")
+def trending():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="trending",
+        ttl_seconds=TTL_CONFIG["trending"],
+        fetch_function=fetch_trending_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch trending movies"}, 500
 
 
 @app.route("/search/movie")
