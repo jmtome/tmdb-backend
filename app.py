@@ -2,7 +2,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, os
 from dotenv import load_dotenv
-from cache import get_cached_result, save_cached_result, get_cached_data, save_cached_data, get_with_stale_while_revalidate, init_db
+from cache import get_with_stale_while_revalidate, init_db
+from config import get_ttl
 
 load_dotenv()
 
@@ -10,14 +11,6 @@ app = Flask(__name__)
 CORS(app)
 TMDB_KEY = os.environ.get("TMDB_KEY")
 init_db()
-
-# TTL configuration for different endpoints (in seconds)
-TTL_CONFIG = {
-    "popular": 1800,        # 30 minutes
-    "now_playing": 3600,    # 1 hour
-    "upcoming": 21600,      # 6 hours
-    "trending": 600,        # 10 minutes
-}
 
 def fetch_popular_movies():
     """Fetch popular movies from TMDB API"""
@@ -59,110 +52,30 @@ def fetch_trending_movies():
         return res.json()
     return None
 
-@app.route("/popular")
-def popular():
-    data, is_cached = get_with_stale_while_revalidate(
-        key="popular",
-        ttl_seconds=TTL_CONFIG["popular"],
-        fetch_function=fetch_popular_movies
-    )
-    
-    if data:
-        return jsonify(data)
-    else:
-        return {"error": "Failed to fetch popular movies"}, 500
-
-
-@app.route("/now_playing")
-def now_playing():
-    data, is_cached = get_with_stale_while_revalidate(
-        key="now_playing",
-        ttl_seconds=TTL_CONFIG["now_playing"],
-        fetch_function=fetch_now_playing_movies
-    )
-    
-    if data:
-        return jsonify(data)
-    else:
-        return {"error": "Failed to fetch now playing movies"}, 500
-
-
-@app.route("/upcoming")
-def upcoming():
-    data, is_cached = get_with_stale_while_revalidate(
-        key="upcoming",
-        ttl_seconds=TTL_CONFIG["upcoming"],
-        fetch_function=fetch_upcoming_movies
-    )
-    
-    if data:
-        return jsonify(data)
-    else:
-        return {"error": "Failed to fetch upcoming movies"}, 500
-
-
-@app.route("/trending")
-def trending():
-    data, is_cached = get_with_stale_while_revalidate(
-        key="trending",
-        ttl_seconds=TTL_CONFIG["trending"],
-        fetch_function=fetch_trending_movies
-    )
-    
-    if data:
-        return jsonify(data)
-    else:
-        return {"error": "Failed to fetch trending movies"}, 500
-
-
-@app.route("/search/movie")
-def search_movie():
-    query = request.args.get("q")
-    if not query:
-        return {"error": "Missing 'q' parameter"}, 400
-
-    cached = get_cached_result(query, "movie")
-    if cached:
-        return jsonify(cached)
-
+def fetch_movie_search(query):
+    """Fetch movie search results from TMDB API"""
     url = "https://api.themoviedb.org/3/search/movie"
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
     params = {"query": query}
-
+    
     res = requests.get(url, headers=headers, params=params)
-    data = res.json()
-    save_cached_result(query, "movie", data)
-    return jsonify(data)
+    if res.status_code == 200:
+        return res.json()
+    return None
 
-
-@app.route("/search/tv")
-def search_tv():
-    query = request.args.get("q")
-    if not query:
-        return {"error": "Missing 'q' parameter"}, 400
-
-    cached = get_cached_result(query, "tv")
-    if cached:
-        return jsonify(cached)
-
+def fetch_tv_search(query):
+    """Fetch TV search results from TMDB API"""
     url = "https://api.themoviedb.org/3/search/tv"
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
     params = {"query": query}
-
+    
     res = requests.get(url, headers=headers, params=params)
-    data = res.json()
-    save_cached_result(query, "tv", data)
-    return jsonify(data)
+    if res.status_code == 200:
+        return res.json()
+    return None
 
-
-@app.route("/movie/<int:movie_id>")
-def movie_detail(movie_id):
-    # Check cache first
-    cache_key = f"movie_detail_{movie_id}"
-    cached = get_cached_data(cache_key, "movie_detail")
-    if cached:
-        return jsonify(cached)
-
+def fetch_movie_detail(movie_id):
+    """Fetch complete movie details from TMDB API"""
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
 
     # Get movie details
@@ -171,7 +84,7 @@ def movie_detail(movie_id):
         headers=headers
     )
     if detail_res.status_code != 200:
-        return {"error": "Failed to fetch movie details"}, 500
+        return None
     details = detail_res.json()
 
     # Get images
@@ -231,7 +144,7 @@ def movie_detail(movie_id):
             x["type"] != "Teaser"  # Teasers after trailers
         ))
 
-    result = {
+    return {
         "id": details.get("id"),
         "title": details.get("title"),
         "overview": details.get("overview"),
@@ -246,30 +159,19 @@ def movie_detail(movie_id):
         "youtube_videos": youtube_videos,
     }
 
-    # Save to cache
-    save_cached_data(cache_key, "movie_detail", result)
-    return jsonify(result)
-
-
-@app.route("/movie/<int:movie_id>/images")
-def movie_images(movie_id):
-    # Check cache first
-    cache_key = f"movie_images_{movie_id}"
-    cached = get_cached_data(cache_key, "movie_images")
-    if cached:
-        return jsonify(cached)
-
+def fetch_movie_images(movie_id):
+    """Fetch movie images from TMDB API"""
     url = f"https://api.themoviedb.org/3/movie/{movie_id}/images"
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
 
     res = requests.get(url, headers=headers)
     if res.status_code != 200:
-        return {"error": "Failed to fetch images"}, res.status_code
+        return None
 
     data = res.json()
     backdrops = data.get("backdrops", [])
 
-    simplified = [
+    return [
         {
             "file_path": img["file_path"],
             "width": img["width"],
@@ -278,27 +180,17 @@ def movie_images(movie_id):
         for img in backdrops
     ]
 
-    # Save to cache
-    save_cached_data(cache_key, "movie_images", simplified)
-    return jsonify(simplified)
-
-
-@app.route("/actor/<int:person_id>")
-def actor_detail(person_id):
-    # Check cache first
-    cache_key = f"actor_detail_{person_id}"
-    cached = get_cached_data(cache_key, "actor_detail")
-    if cached:
-        return jsonify(cached)
-
+def fetch_actor_detail(person_id):
+    """Fetch actor details from TMDB API"""
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
+    
     # Get actor details
     detail_res = requests.get(
         f"https://api.themoviedb.org/3/person/{person_id}",
         headers=headers
     )
     if detail_res.status_code != 200:
-        return {"error": "Failed to fetch actor details"}, 500
+        return None
     details = detail_res.json()
 
     # Get movie credits
@@ -315,7 +207,7 @@ def actor_detail(person_id):
             reverse=True
         )
     
-    result = {
+    return {
         "id": details.get("id"),
         "name": details.get("name"),
         "biography": details.get("biography"),
@@ -335,9 +227,138 @@ def actor_detail(person_id):
         ]
     }
 
-    # Save to cache
-    save_cached_data(cache_key, "actor_detail", result)
-    return jsonify(result)
+@app.route("/popular")
+def popular():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="popular",
+        ttl_seconds=get_ttl("list", "popular"),
+        fetch_function=fetch_popular_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch popular movies"}, 500
+
+
+@app.route("/now_playing")
+def now_playing():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="now_playing",
+        ttl_seconds=get_ttl("list", "now_playing"),
+        fetch_function=fetch_now_playing_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch now playing movies"}, 500
+
+
+@app.route("/upcoming")
+def upcoming():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="upcoming",
+        ttl_seconds=get_ttl("list", "upcoming"),
+        fetch_function=fetch_upcoming_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch upcoming movies"}, 500
+
+
+@app.route("/trending")
+def trending():
+    data, is_cached = get_with_stale_while_revalidate(
+        key="trending",
+        ttl_seconds=get_ttl("list", "trending"),
+        fetch_function=fetch_trending_movies
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch trending movies"}, 500
+
+
+@app.route("/search/movie")
+def search_movie():
+    query = request.args.get("q")
+    if not query:
+        return {"error": "Missing 'q' parameter"}, 400
+
+    data, is_cached = get_with_stale_while_revalidate(
+        key=f"movie_search_{query}",
+        ttl_seconds=get_ttl("search", "movie_search"),
+        fetch_function=lambda: fetch_movie_search(query)
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to search movies"}, 500
+
+
+@app.route("/search/tv")
+def search_tv():
+    query = request.args.get("q")
+    if not query:
+        return {"error": "Missing 'q' parameter"}, 400
+
+    data, is_cached = get_with_stale_while_revalidate(
+        key=f"tv_search_{query}",
+        ttl_seconds=get_ttl("search", "tv_search"),
+        fetch_function=lambda: fetch_tv_search(query)
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to search TV shows"}, 500
+
+
+@app.route("/movie/<int:movie_id>")
+def movie_detail(movie_id):
+    data, is_cached = get_with_stale_while_revalidate(
+        key=f"movie_detail_{movie_id}",
+        ttl_seconds=get_ttl("detail", "movie_detail"),
+        fetch_function=lambda: fetch_movie_detail(movie_id)
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch movie details"}, 500
+
+
+@app.route("/movie/<int:movie_id>/images")
+def movie_images(movie_id):
+    data, is_cached = get_with_stale_while_revalidate(
+        key=f"movie_images_{movie_id}",
+        ttl_seconds=get_ttl("detail", "movie_images"),
+        fetch_function=lambda: fetch_movie_images(movie_id)
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch images"}, 500
+
+
+@app.route("/actor/<int:person_id>")
+def actor_detail(person_id):
+    data, is_cached = get_with_stale_while_revalidate(
+        key=f"actor_detail_{person_id}",
+        ttl_seconds=get_ttl("detail", "actor_detail"),
+        fetch_function=lambda: fetch_actor_detail(person_id)
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch actor details"}, 500
 
 
 @app.route("/")
