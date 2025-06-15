@@ -128,6 +128,36 @@ def movie_detail(movie_id):
         cast = []
         director = None
 
+    # Get videos (trailers, teasers, etc.)
+    videos_res = requests.get(
+        f"https://api.themoviedb.org/3/movie/{movie_id}/videos",
+        headers=headers
+    )
+    youtube_videos = []
+    if videos_res.status_code == 200:
+        videos_data = videos_res.json()
+        all_videos = videos_data.get("results", [])
+        
+        # Filter for YouTube videos and prioritize trailers
+        youtube_videos = [
+            {
+                "key": video["key"],
+                "name": video["name"],
+                "type": video["type"],
+                "official": video.get("official", False),
+                "youtube_url": f"https://www.youtube.com/watch?v={video['key']}"
+            }
+            for video in all_videos
+            if video.get("site") == "YouTube"
+        ]
+        
+        # Sort videos: official trailers first, then other trailers, then other types
+        youtube_videos.sort(key=lambda x: (
+            not x["official"],  # Official videos first
+            x["type"] != "Trailer",  # Trailers before other types
+            x["type"] != "Teaser"  # Teasers after trailers
+        ))
+
     return jsonify({
         "id": details.get("id"),
         "title": details.get("title"),
@@ -140,6 +170,7 @@ def movie_detail(movie_id):
         "backdrops": backdrops,
         "cast": cast,
         "director": director,
+        "youtube_videos": youtube_videos,
     })
 
 
