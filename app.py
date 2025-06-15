@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, os
 from dotenv import load_dotenv
-from cache import get_cached_result, save_cached_result, init_db
+from cache import get_cached_result, save_cached_result, get_cached_data, save_cached_data, init_db
 
 load_dotenv()
 
@@ -90,6 +90,12 @@ def search_tv():
 
 @app.route("/movie/<int:movie_id>")
 def movie_detail(movie_id):
+    # Check cache first
+    cache_key = f"movie_detail_{movie_id}"
+    cached = get_cached_data(cache_key, "movie_detail")
+    if cached:
+        return jsonify(cached)
+
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
 
     # Get movie details
@@ -158,7 +164,7 @@ def movie_detail(movie_id):
             x["type"] != "Teaser"  # Teasers after trailers
         ))
 
-    return jsonify({
+    result = {
         "id": details.get("id"),
         "title": details.get("title"),
         "overview": details.get("overview"),
@@ -171,11 +177,21 @@ def movie_detail(movie_id):
         "cast": cast,
         "director": director,
         "youtube_videos": youtube_videos,
-    })
+    }
+
+    # Save to cache
+    save_cached_data(cache_key, "movie_detail", result)
+    return jsonify(result)
 
 
 @app.route("/movie/<int:movie_id>/images")
 def movie_images(movie_id):
+    # Check cache first
+    cache_key = f"movie_images_{movie_id}"
+    cached = get_cached_data(cache_key, "movie_images")
+    if cached:
+        return jsonify(cached)
+
     url = f"https://api.themoviedb.org/3/movie/{movie_id}/images"
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
 
@@ -195,11 +211,19 @@ def movie_images(movie_id):
         for img in backdrops
     ]
 
+    # Save to cache
+    save_cached_data(cache_key, "movie_images", simplified)
     return jsonify(simplified)
 
 
 @app.route("/actor/<int:person_id>")
 def actor_detail(person_id):
+    # Check cache first
+    cache_key = f"actor_detail_{person_id}"
+    cached = get_cached_data(cache_key, "actor_detail")
+    if cached:
+        return jsonify(cached)
+
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
     # Get actor details
     detail_res = requests.get(
@@ -223,7 +247,8 @@ def actor_detail(person_id):
             key=lambda m: m.get("popularity", 0),
             reverse=True
         )
-    return jsonify({
+    
+    result = {
         "id": details.get("id"),
         "name": details.get("name"),
         "biography": details.get("biography"),
@@ -241,7 +266,11 @@ def actor_detail(person_id):
             }
             for m in movies if m.get("poster_path")
         ]
-    })
+    }
+
+    # Save to cache
+    save_cached_data(cache_key, "actor_detail", result)
+    return jsonify(result)
 
 
 @app.route("/")
