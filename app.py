@@ -198,6 +198,52 @@ def movie_images(movie_id):
     return jsonify(simplified)
 
 
+@app.route("/actor/<int:person_id>")
+def actor_detail(person_id):
+    headers = {"Authorization": f"Bearer {TMDB_KEY}"}
+    # Get actor details
+    detail_res = requests.get(
+        f"https://api.themoviedb.org/3/person/{person_id}",
+        headers=headers
+    )
+    if detail_res.status_code != 200:
+        return {"error": "Failed to fetch actor details"}, 500
+    details = detail_res.json()
+
+    # Get movie credits
+    credits_res = requests.get(
+        f"https://api.themoviedb.org/3/person/{person_id}/movie_credits",
+        headers=headers
+    )
+    movies = []
+    if credits_res.status_code == 200:
+        credits = credits_res.json()
+        movies = sorted(
+            credits.get("cast", []),
+            key=lambda m: m.get("popularity", 0),
+            reverse=True
+        )
+    return jsonify({
+        "id": details.get("id"),
+        "name": details.get("name"),
+        "biography": details.get("biography"),
+        "profile_path": details.get("profile_path"),
+        "birthday": details.get("birthday"),
+        "place_of_birth": details.get("place_of_birth"),
+        "known_for_department": details.get("known_for_department"),
+        "movies": [
+            {
+                "id": m["id"],
+                "title": m["title"],
+                "poster_path": m["poster_path"],
+                "character": m.get("character"),
+                "release_date": m.get("release_date"),
+            }
+            for m in movies if m.get("poster_path")
+        ]
+    })
+
+
 @app.route("/")
 def home():
     return "TMDB backend working!"
