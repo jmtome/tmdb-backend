@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import requests, os
+import requests, os, json
 from dotenv import load_dotenv
 from cache import get_with_stale_while_revalidate, init_db
 from config import get_ttl
@@ -144,6 +144,79 @@ def fetch_movie_detail(movie_id):
             x["type"] != "Teaser"  # Teasers after trailers
         ))
 
+    # Get streaming providers (powered by JustWatch)
+    streaming_providers = {}
+    try:
+        providers_res = requests.get(
+            f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers",
+            headers=headers
+        )
+        print(f"Streaming providers API status: {providers_res.status_code}")
+        
+        if providers_res.status_code == 200:
+            providers_data = providers_res.json()
+            print(f"Raw providers data: {providers_data}")
+            
+            # Extract results by country - you can filter for specific countries if needed
+            streaming_providers = providers_data.get("results", {})
+            print(f"Countries available: {list(streaming_providers.keys())}")
+            
+            # Process providers for easier frontend consumption
+            # Focus on major countries/regions - you can customize this list
+            processed_providers = {}
+            for country_code, country_data in streaming_providers.items():
+                country_providers = {}
+                
+                # Streaming (flatrate) providers
+                if "flatrate" in country_data:
+                    country_providers["streaming"] = [
+                        {
+                            "provider_id": provider["provider_id"],
+                            "provider_name": provider["provider_name"],
+                            "logo_path": f"https://image.tmdb.org/t/p/original{provider['logo_path']}" if provider.get("logo_path") else None
+                        }
+                        for provider in country_data["flatrate"]
+                    ]
+                
+                # Rental providers
+                if "rent" in country_data:
+                    country_providers["rent"] = [
+                        {
+                            "provider_id": provider["provider_id"],
+                            "provider_name": provider["provider_name"],
+                            "logo_path": f"https://image.tmdb.org/t/p/original{provider['logo_path']}" if provider.get("logo_path") else None
+                        }
+                        for provider in country_data["rent"]
+                    ]
+                
+                # Purchase providers
+                if "buy" in country_data:
+                    country_providers["buy"] = [
+                        {
+                            "provider_id": provider["provider_id"],
+                            "provider_name": provider["provider_name"],
+                            "logo_path": f"https://image.tmdb.org/t/p/original{provider['logo_path']}" if provider.get("logo_path") else None
+                        }
+                        for provider in country_data["buy"]
+                    ]
+                
+                # Add TMDB link for attribution (required by JustWatch terms)
+                if "link" in country_data:
+                    country_providers["tmdb_link"] = country_data["link"]
+                
+                if country_providers:  # Only add if there are providers
+                    processed_providers[country_code] = country_providers
+            
+            streaming_providers = processed_providers
+            print(f"Final processed providers: {streaming_providers}")
+        else:
+            print(f"Streaming providers API failed with status: {providers_res.status_code}")
+            print(f"Response text: {providers_res.text}")
+            streaming_providers = {}
+    except Exception as e:
+        print(f"Error fetching streaming providers: {e}")
+        streaming_providers = {}
+
     return {
         "id": details.get("id"),
         "title": details.get("title"),
@@ -157,6 +230,7 @@ def fetch_movie_detail(movie_id):
         "cast": cast,
         "director": director,
         "youtube_videos": youtube_videos,
+        "streaming_providers": streaming_providers,
     }
 
 def fetch_movie_images(movie_id):
