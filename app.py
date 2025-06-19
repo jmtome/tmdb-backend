@@ -12,11 +12,12 @@ CORS(app)
 TMDB_KEY = os.environ.get("TMDB_KEY")
 init_db()
 
-def fetch_popular_movies():
+def fetch_popular_movies(page=1):
     """Fetch popular movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/movie/popular",
-        headers={"Authorization": f"Bearer {TMDB_KEY}"}
+        headers={"Authorization": f"Bearer {TMDB_KEY}"},
+        params={"page": page}
     )
     if res.status_code == 200:
         return res.json()
@@ -303,10 +304,16 @@ def fetch_actor_detail(person_id):
 
 @app.route("/popular")
 def popular():
+    page = request.args.get("page", 1, type=int)
+    
+    # Validate page parameter
+    if page < 1:
+        return {"error": "Page must be greater than 0"}, 400
+    
     data, is_cached = get_with_stale_while_revalidate(
-        key="popular",
+        key=f"popular_page_{page}",
         ttl_seconds=get_ttl("list", "popular"),
-        fetch_function=fetch_popular_movies
+        fetch_function=lambda: fetch_popular_movies(page)
     )
     
     if data:
