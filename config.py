@@ -14,6 +14,7 @@ DETAIL_ENDPOINTS_TTL = {
     "movie_detail": 7200,   # 2 hours - movie info rarely changes
     "actor_detail": 21600,  # 6 hours - actor bios/filmography update slowly
     "movie_images": 86400,  # 24 hours - images rarely change once uploaded
+    "movie_reviews": 7200,  # 2 hours - reviews don't change very frequently
 }
 
 # Search endpoints - balance between freshness and performance
