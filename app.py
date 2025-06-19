@@ -302,6 +302,20 @@ def fetch_actor_detail(person_id):
         ]
     }
 
+def fetch_movie_reviews(movie_id, page=1):
+    """Fetch movie reviews from TMDB API"""
+    headers = {"Authorization": f"Bearer {TMDB_KEY}"}
+    params = {"page": page}
+    
+    res = requests.get(
+        f"https://api.themoviedb.org/3/movie/{movie_id}/reviews",
+        headers=headers,
+        params=params
+    )
+    if res.status_code == 200:
+        return res.json()
+    return None
+
 @app.route("/popular")
 def popular():
     page = request.args.get("page", 1, type=int)
@@ -440,6 +454,26 @@ def actor_detail(person_id):
         return jsonify(data)
     else:
         return {"error": "Failed to fetch actor details"}, 500
+
+
+@app.route("/movie/<int:movie_id>/reviews")
+def movie_reviews(movie_id):
+    page = request.args.get("page", 1, type=int)
+    
+    # Validate page parameter
+    if page < 1:
+        return {"error": "Page must be greater than 0"}, 400
+    
+    data, is_cached = get_with_stale_while_revalidate(
+        key=f"movie_reviews_{movie_id}_page_{page}",
+        ttl_seconds=get_ttl("detail", "movie_reviews"),
+        fetch_function=lambda: fetch_movie_reviews(movie_id, page)
+    )
+    
+    if data:
+        return jsonify(data)
+    else:
+        return {"error": "Failed to fetch movie reviews"}, 500
 
 
 @app.route("/")
