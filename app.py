@@ -23,41 +23,44 @@ def fetch_popular_movies(page=1):
         return res.json()
     return None
 
-def fetch_now_playing_movies():
+def fetch_now_playing_movies(page=1):
     """Fetch now playing movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/movie/now_playing",
-        headers={"Authorization": f"Bearer {TMDB_KEY}"}
+        headers={"Authorization": f"Bearer {TMDB_KEY}"},
+        params={"page": page}
     )
     if res.status_code == 200:
         return res.json()
     return None
 
-def fetch_upcoming_movies():
+def fetch_upcoming_movies(page=1):
     """Fetch upcoming movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/movie/upcoming",
-        headers={"Authorization": f"Bearer {TMDB_KEY}"}
+        headers={"Authorization": f"Bearer {TMDB_KEY}"},
+        params={"page": page}
     )
     if res.status_code == 200:
         return res.json()
     return None
 
-def fetch_trending_movies():
+def fetch_trending_movies(page=1):
     """Fetch trending movies from TMDB API"""
     res = requests.get(
         "https://api.themoviedb.org/3/trending/movie/week",
-        headers={"Authorization": f"Bearer {TMDB_KEY}"}
+        headers={"Authorization": f"Bearer {TMDB_KEY}"},
+        params={"page": page}
     )
     if res.status_code == 200:
         return res.json()
     return None
 
-def fetch_movie_search(query):
+def fetch_movie_search(query, page=1):
     """Fetch movie search results from TMDB API"""
     url = "https://api.themoviedb.org/3/search/movie"
     headers = {"Authorization": f"Bearer {TMDB_KEY}"}
-    params = {"query": query}
+    params = {"query": query, "page": page}
     
     res = requests.get(url, headers=headers, params=params)
     if res.status_code == 200:
@@ -338,10 +341,16 @@ def popular():
 
 @app.route("/now_playing")
 def now_playing():
+    page = request.args.get("page", 1, type=int)
+    
+    # Validate page parameter
+    if page < 1:
+        return {"error": "Page must be greater than 0"}, 400
+    
     data, is_cached = get_with_stale_while_revalidate(
-        key="now_playing",
+        key=f"now_playing_page_{page}",
         ttl_seconds=get_ttl("list", "now_playing"),
-        fetch_function=fetch_now_playing_movies
+        fetch_function=lambda: fetch_now_playing_movies(page)
     )
     
     if data:
@@ -352,10 +361,16 @@ def now_playing():
 
 @app.route("/upcoming")
 def upcoming():
+    page = request.args.get("page", 1, type=int)
+    
+    # Validate page parameter
+    if page < 1:
+        return {"error": "Page must be greater than 0"}, 400
+    
     data, is_cached = get_with_stale_while_revalidate(
-        key="upcoming",
+        key=f"upcoming_page_{page}",
         ttl_seconds=get_ttl("list", "upcoming"),
-        fetch_function=fetch_upcoming_movies
+        fetch_function=lambda: fetch_upcoming_movies(page)
     )
     
     if data:
@@ -366,10 +381,16 @@ def upcoming():
 
 @app.route("/trending")
 def trending():
+    page = request.args.get("page", 1, type=int)
+    
+    # Validate page parameter
+    if page < 1:
+        return {"error": "Page must be greater than 0"}, 400
+    
     data, is_cached = get_with_stale_while_revalidate(
-        key="trending",
+        key=f"trending_page_{page}",
         ttl_seconds=get_ttl("list", "trending"),
-        fetch_function=fetch_trending_movies
+        fetch_function=lambda: fetch_trending_movies(page)
     )
     
     if data:
@@ -384,10 +405,16 @@ def search_movie():
     if not query:
         return {"error": "Missing 'q' parameter"}, 400
 
+    page = request.args.get("page", 1, type=int)
+    
+    # Validate page parameter
+    if page < 1:
+        return {"error": "Page must be greater than 0"}, 400
+
     data, is_cached = get_with_stale_while_revalidate(
-        key=f"movie_search_{query}",
+        key=f"movie_search_{query}_page_{page}",
         ttl_seconds=get_ttl("search", "movie_search"),
-        fetch_function=lambda: fetch_movie_search(query)
+        fetch_function=lambda: fetch_movie_search(query, page)
     )
     
     if data:
